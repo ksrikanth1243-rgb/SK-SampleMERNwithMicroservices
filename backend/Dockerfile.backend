@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────
+#  Stage 1: Build / install production deps
+# ─────────────────────────────────────────────
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy dependency manifests first (layer-cache friendly)
+COPY package*.json ./
+
+# Install production dependencies only
+RUN npm ci --only=production --silent
+
+# Copy application source
+COPY . .
+
+# ─────────────────────────────────────────────
+#  Stage 2: Runtime (minimal image)
+# ─────────────────────────────────────────────
+FROM node:18-alpine
+
+# Add non-root user for security
+RUN addgroup -g 1001 -S appgroup && \
+    adduser  -u 1001 -S appuser -G appgroup
+
+WORKDIR /app
+
+# Copy built app from builder stage
+COPY --from=builder --chown=appuser:appgroup /app ./
+
+USER appuser
+
+EXPOSE 5000
+
+ENV NODE_ENV=production \
+    PORT=5000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -qO- http://localhost:5000/api/health || exit 1
+
+CMD ["node", "server.js"]
