@@ -1,6 +1,3 @@
-// ============================================================
-//  StreamingApp — Jenkins CI/CD Pipeline
-// ============================================================
 pipeline {
 
     agent any
@@ -16,7 +13,6 @@ pipeline {
         HELM_RELEASE       = 'streaming-app'
         K8S_NAMESPACE      = 'streaming'
         AWS_CREDENTIALS    = 'aws-ecr-credentials'
-        KUBECONFIG_CRED    = 'eks-kubeconfig'
     }
 
     triggers {
@@ -31,7 +27,6 @@ pipeline {
 
     stages {
 
-        // ── Stage 1: Checkout ─────────────────────────────────
         stage('Checkout') {
             steps {
                 checkout scm
@@ -45,22 +40,12 @@ pipeline {
             }
         }
 
-        // ── Stage 2: Skip Tests ───────────────────────────────
         stage('Lint & Unit Tests') {
-<<<<<<< HEAD
             steps {
                 echo 'Skipping tests — microservices have no test suites configured'
             }
         }
-=======
-        // ────────────────────────────────────────────────────
-           steps {
-        echo 'Skipping tests — no test suites configured for microservices'
-         }
-         }
->>>>>>> 112cb43 (WIP: local changes to Jenkinsfile)
 
-        // ── Stage 3: ECR Login ────────────────────────────────
         stage('ECR Login') {
             steps {
                 withCredentials([usernamePassword(
@@ -76,7 +61,6 @@ pipeline {
             }
         }
 
-        // ── Stage 4: Build Docker Images ──────────────────────
         stage('Build Docker Images') {
             parallel {
                 stage('Build helloService') {
@@ -104,7 +88,6 @@ pipeline {
             }
         }
 
-        // ── Stage 5: Push to ECR ──────────────────────────────
         stage('Push to ECR') {
             parallel {
                 stage('Push helloService') {
@@ -126,7 +109,6 @@ pipeline {
             }
         }
 
-        // ── Stage 6: Update EKS Kubeconfig ───────────────────
         stage('Update EKS Kubeconfig') {
             steps {
                 withCredentials([usernamePassword(
@@ -147,7 +129,6 @@ pipeline {
             }
         }
 
-        // ── Stage 7: Helm Deploy ──────────────────────────────
         stage('Helm Deploy') {
             steps {
                 withCredentials([usernamePassword(
@@ -175,18 +156,22 @@ pipeline {
             }
         }
 
-        // ── Stage 8: Smoke Test ───────────────────────────────
         stage('Smoke Test') {
             steps {
-                sh '''
-                    echo "Checking helloService health..."
-                    kubectl --kubeconfig=/tmp/kube/config \
-                      get pods -n ${K8S_NAMESPACE}
-                '''
+                withCredentials([usernamePassword(
+                    credentialsId: "${AWS_CREDENTIALS}",
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
+                    sh '''
+                        kubectl --kubeconfig=/tmp/kube/config \
+                          get pods -n ${K8S_NAMESPACE}
+                    '''
+                }
             }
         }
 
-    } // end stages
+    }
 
     post {
         always {
@@ -197,11 +182,11 @@ pipeline {
             '''
         }
         success {
-            echo "✅ Build #${env.BUILD_NUMBER} succeeded — tag: ${IMAGE_TAG}"
+            echo "SUCCESS: Build #${env.BUILD_NUMBER} tag: ${IMAGE_TAG}"
         }
         failure {
-            echo "❌ Build #${env.BUILD_NUMBER} FAILED"
+            echo "FAILED: Build #${env.BUILD_NUMBER}"
         }
     }
 
-} // end pipeline
+}
