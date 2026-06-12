@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: profile-deployment
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.profileService.replicaCount }}
+  selector:
+    matchLabels:
+      app: profileservice
+  template:
+    metadata:
+      labels:
+        app: profileservice
+    spec:
+      containers:
+        - name: profileservice
+          image: "{{ .Values.profileService.image.repository }}:{{ .Values.profileService.image.tag }}"
+          imagePullPolicy: {{ .Values.profileService.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.profileService.service.targetPort }}
+          env:
+            - name: PORT
+              value: "{{ .Values.profileService.service.targetPort }}"
+            - name: MONGO_URL
+              value: "{{ .Values.profileService.env.MONGO_URL }}"

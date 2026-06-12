@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-deployment
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.helloService.replicaCount }}
+  selector:
+    matchLabels:
+      app: helloservice
+  template:
+    metadata:
+      labels:
+        app: helloservice
+    spec:
+      containers:
+        - name: helloservice
+          image: "{{ .Values.helloService.image.repository }}:{{ .Values.helloService.image.tag }}"
+          imagePullPolicy: {{ .Values.helloService.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.helloService.service.targetPort }}
+          env:
+            - name: PORT
+              value: "{{ .Values.helloService.service.targetPort }}"
