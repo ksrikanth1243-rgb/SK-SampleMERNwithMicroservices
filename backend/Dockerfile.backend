@@ -1,42 +1,21 @@
-# ─────────────────────────────────────────────
-#  Stage 1: Build / install production deps
-#  Build context: repo root
-#  Usage: docker build -f ./backend/Dockerfile.backend -t streaming-backend:local .
-# ─────────────────────────────────────────────
+# Stage 1: Build
 FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-<<<<<<< Updated upstream
-# Copy package manifests from the backend subdirectory FIRST (cache layer)
 COPY backend/package*.json ./
-
-# Install production dependencies
 RUN npm install --omit=dev --silent
-=======
-# Copy dependency manifests first (layer-cache friendly)
-COPY package*.json ./
+
 COPY backend/ .
 
-# Install production dependencies only
-RUN npm install --only=production
->>>>>>> Stashed changes
-
-# Copy the rest of the backend source
-COPY backend/ .
-
-# ─────────────────────────────────────────────
-#  Stage 2: Runtime (minimal image)
-# ─────────────────────────────────────────────
+# Stage 2: Runtime
 FROM node:18-alpine
 
-# Non-root user for security
 RUN addgroup -g 1001 -S appgroup && \
     adduser  -u 1001 -S appuser -G appgroup
 
 WORKDIR /app
 
-# Copy built app from builder stage
 COPY --from=builder --chown=appuser:appgroup /app ./
 
 USER appuser
