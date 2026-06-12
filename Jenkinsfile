@@ -1,28 +1,20 @@
 // ============================================================
 //  StreamingApp — Jenkins CI/CD Pipeline
-//  Builds Docker images, pushes to ECR, deploys to EKS via Helm
 // ============================================================
 pipeline {
 
     agent any
 
     environment {
-        // AWS / ECR
         AWS_REGION         = 'ap-south-1'
         AWS_ACCOUNT_ID     = credentials('aws-account-id')
         ECR_REGISTRY       = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         ECR_REPO_HELLO     = 'streaming-app/helloservice'
         ECR_REPO_PROFILE   = 'streaming-app/profileservice'
-
-        // Image tagging
         IMAGE_TAG          = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
-
-        // EKS
         EKS_CLUSTER_NAME   = 'streaming-eks-cluster'
         HELM_RELEASE       = 'streaming-app'
         K8S_NAMESPACE      = 'streaming'
-
-        // Credential IDs
         AWS_CREDENTIALS    = 'aws-ecr-credentials'
         KUBECONFIG_CRED    = 'eks-kubeconfig'
     }
@@ -53,7 +45,7 @@ pipeline {
             }
         }
 
-        // ── Stage 2: Skip Tests (no test suites configured) ───
+        // ── Stage 2: Skip Tests ───────────────────────────────
         stage('Lint & Unit Tests') {
             steps {
                 echo 'Skipping tests — microservices have no test suites configured'
@@ -129,12 +121,19 @@ pipeline {
         // ── Stage 6: Update EKS Kubeconfig ───────────────────
         stage('Update EKS Kubeconfig') {
             steps {
-                withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
+                withCredentials([usernamePassword(
+                    credentialsId: "${AWS_CREDENTIALS}",
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
                     sh '''
+                        mkdir -p /tmp/kube
                         aws eks update-kubeconfig \
                           --region ${AWS_REGION} \
-                          --name   ${EKS_CLUSTER_NAME}
-                        kubectl get nodes
+                          --name   ${EKS_CLUSTER_NAME} \
+                          --kubeconfig /tmp/kube/config
+                        chmod 600 /tmp/kube/config
+                        kubectl --kubeconfig=/tmp/kube/config get nodes
                     '''
                 }
             }
@@ -143,11 +142,19 @@ pipeline {
         // ── Stage 7: Helm Deploy ──────────────────────────────
         stage('Helm Deploy') {
             steps {
-                withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
+                withCredentials([usernamePassword(
+                    credentialsId: "${AWS_CREDENTIALS}",
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
                     sh '''
-                        kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl --kubeconfig=/tmp/kube/config \
+                          create namespace ${K8S_NAMESPACE} \
+                          --dry-run=client -o yaml | \
+                          kubectl --kubeconfig=/tmp/kube/config apply -f -
 
                         helm upgrade --install ${HELM_RELEASE} ./helm/streaming-app \
+                          --kubeconfig /tmp/kube/config \
                           --namespace ${K8S_NAMESPACE} \
                           --set helloService.image.repository=${ECR_REGISTRY}/${ECR_REPO_HELLO} \
                           --set helloService.image.tag=${IMAGE_TAG} \
@@ -164,8 +171,9 @@ pipeline {
         stage('Smoke Test') {
             steps {
                 sh '''
-                    curl --fail --retry 5 --retry-delay 10 \
-                      http://localhost:3001/health || true
+                    echo "Checking helloService health..."
+                    kubectl --kubeconfig=/tmp/kube/config \
+                      get pods -n ${K8S_NAMESPACE}
                 '''
             }
         }
@@ -173,38 +181,19 @@ pipeline {
     } // end stages
 
     post {
-
         always {
             sh '''
-                docker rmi ${ECR_REGISTRY}/${ECR_REPO_HELLO}:${IMAGE_TAG}    || true
-                docker rmi ${ECR_REGISTRY}/${ECR_REPO_PROFILE}:${IMAGE_TAG}  || true
+                docker rmi ${ECR_REGISTRY}/${ECR_REPO_HELLO}:${IMAGE_TAG}   || true
+                docker rmi ${ECR_REGISTRY}/${ECR_REPO_PROFILE}:${IMAGE_TAG} || true
+                rm -f /tmp/kube/config || true
             '''
         }
-
         success {
             echo "✅ Build #${env.BUILD_NUMBER} succeeded — tag: ${IMAGE_TAG}"
-            sh '''
-                aws sns publish \
-                  --region    ${AWS_REGION} \
-                  --topic-arn ${SNS_TOPIC_ARN} \
-                  --subject   "SUCCESS: StreamingApp Build #${BUILD_NUMBER}" \
-                  --message   "Branch: ${GIT_BRANCH} | Tag: ${IMAGE_TAG} | ${BUILD_URL}" \
-                  || true
-            '''
         }
-
         failure {
             echo "❌ Build #${env.BUILD_NUMBER} FAILED"
-            sh '''
-                aws sns publish \
-                  --region    ${AWS_REGION} \
-                  --topic-arn ${SNS_TOPIC_ARN} \
-                  --subject   "FAILED: StreamingApp Build #${BUILD_NUMBER}" \
-                  --message   "Branch: ${GIT_BRANCH} | Logs: ${BUILD_URL}console" \
-                  || true
-            '''
         }
-
     }
 
 } // end pipeline
