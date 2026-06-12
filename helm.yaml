@@ -1,0 +1,103 @@
+# ============================================================
+#  StreamingApp Helm Values
+#  Override per environment: helm upgrade ... -f values-prod.yaml
+# ============================================================
+
+# ── Frontend ─────────────────────────────────────────────────
+frontend:
+  replicaCount: 2
+  image:
+    repository: ""          # Set by Jenkins: <account>.dkr.ecr.<region>.amazonaws.com/streaming-app/frontend
+    tag: "latest"
+    pullPolicy: Always
+  service:
+    type: LoadBalancer       # Use ClusterIP + Ingress for production
+    port: 80
+    targetPort: 80
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 80
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 80
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# ── Backend ──────────────────────────────────────────────────
+backend:
+  replicaCount: 2
+  image:
+    repository: ""           # Set by Jenkins: <account>.dkr.ecr.<region>.amazonaws.com/streaming-app/backend
+    tag: "latest"
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "512Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  env:
+    NODE_ENV: production
+    PORT: "5000"
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 5000
+    initialDelaySeconds: 20
+    periodSeconds: 30
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: 5000
+    initialDelaySeconds: 10
+    periodSeconds: 15
+
+# ── MongoDB (External URI — use Atlas or DocumentDB in prod) ─
+mongodb:
+  uri: ""                    # Override with: --set mongodb.uri="mongodb+srv://..."
+  secretName: mongo-secret   # Kubernetes Secret name
+
+# ── Ingress ──────────────────────────────────────────────────
+ingress:
+  enabled: false             # Enable for production with ALB Ingress Controller
+  className: "alb"
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+  host: streaming.example.com
+  tls: []
+
+# ── Global ───────────────────────────────────────────────────
+nameOverride: ""
+fullnameOverride: ""
+imagePullSecrets: []
+serviceAccount:
+  create: false
+  name: ""
