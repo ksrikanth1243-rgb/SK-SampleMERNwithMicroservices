@@ -47,10 +47,18 @@ pipeline {
 
         // ── Stage 2: Skip Tests ───────────────────────────────
         stage('Lint & Unit Tests') {
+<<<<<<< HEAD
             steps {
                 echo 'Skipping tests — microservices have no test suites configured'
             }
         }
+=======
+        // ────────────────────────────────────────────────────
+           steps {
+        echo 'Skipping tests — no test suites configured for microservices'
+         }
+         }
+>>>>>>> 112cb43 (WIP: local changes to Jenkinsfile)
 
         // ── Stage 3: ECR Login ────────────────────────────────
         stage('ECR Login') {
