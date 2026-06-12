@@ -7,11 +7,20 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+<<<<<<< Updated upstream
 # Copy package manifests from the backend subdirectory FIRST (cache layer)
 COPY backend/package*.json ./
 
 # Install production dependencies
 RUN npm install --omit=dev --silent
+=======
+# Copy dependency manifests first (layer-cache friendly)
+COPY package*.json ./
+COPY backend/ .
+
+# Install production dependencies only
+RUN npm install --only=production
+>>>>>>> Stashed changes
 
 # Copy the rest of the backend source
 COPY backend/ .
